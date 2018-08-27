@@ -4,6 +4,7 @@
 		"sources":			[
 			"src/addon.cpp", 
 			"src/Parser.cpp", 
+			"src/Utils.cpp", 
 			
 			"src/modest/modest_myurl.c", 
 			"src/modest/modest_mycss.c", 

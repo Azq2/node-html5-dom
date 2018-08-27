@@ -1,3 +1,3 @@
 all:
 	node-gyp configure build
-	nodejs index.js
+	nodejs --expose-gc index.js

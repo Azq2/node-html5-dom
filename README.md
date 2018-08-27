@@ -1,2 +1,36 @@
 # node-html5-dom
-Under early development
+Under early (and lazy) development
+
+- [ ] Parser
+	- [ ] new([options])
+	- [ ] async parse(html[, options])
+	- [ ] parseSync(html[, options])
+	- [ ] parseChunkStart([options])
+	- [ ] async parseChunk(html[, options])
+	- [ ] parseChunkSync(html[, options])
+- [ ] Tree
+- [ ] Node
+- [ ] Collection (NodesList?)
+- [ ] Element extends Node
+- [ ] Document extends Node
+- [ ] Fragment extends Node
+- [ ] Text extends Node
+- [ ] Comment extends Node
+- [ ] DocType extends Node
+- [ ] TokenList
+- [ ] Encoding
+- [ ] CSS
+	- [ ] new
+	- [ ] parseSelector(selector_text)
+- [ ] CSS.Selector
+	- [ ] new(selector_text)
+	- [ ] text() (toString)
+	- [ ] ast()
+	- [ ] length
+	- [ ] entry(index)
+- [ ] CSS.Selector.Entry
+	- [ ] text() (toString)
+	- [ ] ast()
+	- [ ] pseudoElement()
+	- [ ] specificity()
+	- [ ] specificityArray()
