@@ -8,8 +8,9 @@
 namespace HTML5 {
 	class Tree: public Nan::ObjectWrap {
 		public:
-			Tree(myhtml_tree_t *tree);
+			Tree(Parser *parser, myhtml_tree_t *tree);
 			
+			Parser *parser = nullptr;
 			myhtml_tree_t *myhtml_tree = nullptr;
 			
 			static void Init(v8::Local<v8::Object> exports);
@@ -20,5 +21,6 @@ namespace HTML5 {
 			static Nan::Persistent<v8::Function> constructor;
 			
 			static NAN_METHOD(JsNew);
+			static NAN_METHOD(JsParser);
 	};
 };

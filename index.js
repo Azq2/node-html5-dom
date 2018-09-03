@@ -6,8 +6,11 @@ console.log(binding);
 		threads: 0
 	});
 	
-	console.log(parser.parseSync('<div>aaaa</div>'));
-	console.log(new binding.Tree());
+	var tree = parser.parseSync('<div>aaaa</div>');
+	
+	console.log(tree.parser(), parser, tree.parser() == parser, tree.parser() === parser);
+	
+	// console.log(new binding.Tree());
 })();
 
 process.on('exit', function () {
