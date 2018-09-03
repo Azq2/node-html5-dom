@@ -5,10 +5,9 @@ console.log(binding);
 	var parser = new binding.Parser({
 		threads: 0
 	});
-	var v = await parser.parseCallback("bla bla", function () {
-		console.log("callback");
-	});
-	console.log(v);
+	
+	console.log(parser.parseSync('<div>aaaa</div>'));
+	console.log(new binding.Tree());
 })();
 
 process.on('exit', function () {

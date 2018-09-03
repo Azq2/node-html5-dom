@@ -33,14 +33,24 @@ namespace HTML5 {
 			
 			static Nan::Persistent<v8::Function> constructor;
 			
-			static NAN_METHOD(New);
-			static NAN_METHOD(Parse);
-			static NAN_METHOD(ParseSync);
-			static NAN_METHOD(ParseChunkStart);
-			static NAN_METHOD(ParseChunk);
-			static NAN_METHOD(ParseChunkSync);
-			static NAN_METHOD(ParseChunkEnd);
-			static NAN_METHOD(ParseChunkEndSync);
+			static NAN_METHOD(JsNew);
+			static NAN_METHOD(JsParse);
+			static NAN_METHOD(JsParseSync);
+			static NAN_METHOD(JsParseChunkStart);
+			static NAN_METHOD(JsParseChunk);
+			static NAN_METHOD(JsParseChunkSync);
+			static NAN_METHOD(JsParseChunkEnd);
+			static NAN_METHOD(JsParseChunkEndSync);
+			
+			myhtml_tree_t *Parse(const Nan::Utf8String &html, ParserOptions *options);
+			std::tuple<myencoding_t, const char *, size_t> DetectEncoding(const Nan::Utf8String &html, ParserOptions *options);
+			void ApplyTreeOptions(myhtml_tree_t *tree, ParserOptions *options);
+			
+			void TreeWaitForDone(myhtml_tree_t *tree);
+			bool TreeIsDone(myhtml_tree_t *tree);
+			
+			void NodeWaitForDone(myhtml_tree_node_t *tree, bool recursive);
+			bool NodeIsDone(myhtml_tree_node_t *tree, bool recursive);
 			
 			// Options from JS
 			static bool GetBoolOption(v8::Local<v8::Object> object, const char *property, bool default_value);

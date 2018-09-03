@@ -1,5 +1,6 @@
 #include "Utils.hpp"
 #include "Parser.hpp"
+#include "Tree.hpp"
 
 using namespace HTML5;
 
@@ -77,21 +78,21 @@ void Parser::Init(v8::Local<v8::Object> exports) {
 	Nan::HandleScope scope;
 	
 	// Constructor
-	v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(New);
+	v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(JsNew);
 	tpl->SetClassName(Nan::New("Parser").ToLocalChecked());
 	tpl->InstanceTemplate()->SetInternalFieldCount(1);
 	
 	// Prototype
-	Nan::SetPrototypeMethod(tpl, "parseCallback", Parse);
-	Nan::SetPrototypeMethod(tpl, "parseSync", ParseSync);
+	Nan::SetPrototypeMethod(tpl, "parseCallback", JsParse);
+	Nan::SetPrototypeMethod(tpl, "parseSync", JsParseSync);
 	
-	Nan::SetPrototypeMethod(tpl, "ParseChunkStart", ParseChunkStart);
+	Nan::SetPrototypeMethod(tpl, "ParseChunkStart", JsParseChunkStart);
 	
-	Nan::SetPrototypeMethod(tpl, "ParseChunkCallback", ParseChunk);
-	Nan::SetPrototypeMethod(tpl, "ParseChunkSync", ParseChunkSync);
+	Nan::SetPrototypeMethod(tpl, "ParseChunkCallback", JsParseChunk);
+	Nan::SetPrototypeMethod(tpl, "ParseChunkSync", JsParseChunkSync);
 	
-	Nan::SetPrototypeMethod(tpl, "ParseChunkEndCallback", ParseChunkEnd);
-	Nan::SetPrototypeMethod(tpl, "ParseChunkEndSync", ParseChunkEndSync);
+	Nan::SetPrototypeMethod(tpl, "ParseChunkEndCallback", JsParseChunkEnd);
+	Nan::SetPrototypeMethod(tpl, "ParseChunkEndSync", JsParseChunkEndSync);
 	
 	// Add to exports
 	constructor.Reset(tpl->GetFunction());
@@ -99,7 +100,7 @@ void Parser::Init(v8::Local<v8::Object> exports) {
 }
 
 // New instance of Parser
-NAN_METHOD(Parser::New) {
+NAN_METHOD(Parser::JsNew) {
 	if (info.IsConstructCall()) {
 		if (info.Length() > 1) {
 			Utils::ThrowTypeError("Parser([options]): Invalid arguments count.");
@@ -120,7 +121,7 @@ NAN_METHOD(Parser::New) {
 }
 
 // Parse full HTML (async)
-NAN_METHOD(Parser::Parse) {
+NAN_METHOD(Parser::JsParse) {
 	Parser *self = ObjectWrap::Unwrap<Parser>(info.Holder());
 	
 	Nan::Callback *callback = new Nan::Callback(Nan::To<v8::Function>(info[1]).ToLocalChecked());
@@ -132,33 +133,198 @@ NAN_METHOD(Parser::Parse) {
 }
 
 // Parse full HTML (sync)
-NAN_METHOD(Parser::ParseSync) {
+NAN_METHOD(Parser::JsParseSync) {
+	Parser *self = ObjectWrap::Unwrap<Parser>(info.Holder());
 	
+	ParserOptions local_options;
+	
+	if (info.Length() > 2 || !info.Length()) {
+		Utils::ThrowTypeError("usage: parseSync(html, [options])");
+		return;
+	}
+	
+	// Local options override
+	if (info.Length() > 1) {
+		auto src_options = Nan::To<v8::Object>(info[1]);
+		if (!src_options.IsEmpty())
+			GetOptionsFromJS(&local_options, &self->options, src_options.ToLocalChecked());
+		if (!CheckOptions(&self->options, "parseSync(html, [options])"))
+			return;
+	}
+	
+	Nan::Utf8String str_value(info[0]);
+	myhtml_tree_t *tree = self->Parse(str_value, &local_options);
+	info.GetReturnValue().Set(Tree::FromMyhtml(tree, self));
 }
 
 // Start chunked parsing (only sync)
-NAN_METHOD(Parser::ParseChunkStart) {
+NAN_METHOD(Parser::JsParseChunkStart) {
 	
 }
 
 // Parse one chunk of html (async)
-NAN_METHOD(Parser::ParseChunk) {
+NAN_METHOD(Parser::JsParseChunk) {
 	
 }
 
 // Parse one chunk of html (sync)
-NAN_METHOD(Parser::ParseChunkSync) {
+NAN_METHOD(Parser::JsParseChunkSync) {
 	
 }
 
 // Stop chunked parsing and return tree (async)
-NAN_METHOD(Parser::ParseChunkEnd) {
+NAN_METHOD(Parser::JsParseChunkEnd) {
 	
 }
 
 // Stop chunked parsing and return tree (sync)
-NAN_METHOD(Parser::ParseChunkEndSync) {
+NAN_METHOD(Parser::JsParseChunkEndSync) {
 	
+}
+
+void Parser::ApplyTreeOptions(myhtml_tree_t *tree, ParserOptions *options) {
+	if (options->scripts) {
+		tree->flags = (myhtml_tree_flags) (tree->flags | MyHTML_TREE_FLAGS_SCRIPT);
+	} else {
+		tree->flags = (myhtml_tree_flags) (tree->flags & ~MyHTML_TREE_FLAGS_SCRIPT);
+	}
+	
+	if (options->ignore_doctype)
+		tree->flags = (myhtml_tree_flags) (tree->flags | MyHTML_TREE_PARSE_FLAGS_WITHOUT_DOCTYPE_IN_TREE);
+	
+	if (options->ignore_whitespace)
+		tree->flags = (myhtml_tree_flags) (tree->flags | MyHTML_TREE_PARSE_FLAGS_SKIP_WHITESPACE_TOKEN);
+}
+
+myhtml_tree_t *Parser::Parse(const Nan::Utf8String &html, ParserOptions *options) {
+	mystatus_t status;
+	
+	// Lock myhtml object
+	uv_mutex_lock(&myhtml_mutex);
+	
+	// Create myhtml tree
+	myhtml_tree_t *tree = myhtml_tree_create();
+	status = myhtml_tree_init(tree, myhtml);
+	if (status) {
+		myhtml_tree_destroy(tree);
+		uv_mutex_unlock(&myhtml_mutex);
+		Utils::ThrowError("myhtml_tree_init failed: %d (%s)", status, Utils::GetModestError(status));
+		return nullptr;
+	}
+	
+	// Detect enoding and unwrap Nan::Utf8String
+	myencoding_t encoding;
+	const char *html_str;
+	size_t html_length;
+	
+	std::tie(encoding, html_str, html_length) = DetectEncoding(html, options);
+	
+	// Apply options for tree
+	ApplyTreeOptions(tree, options);
+	
+	status = myhtml_parse(tree, encoding, html_str, html_length);
+	if (status) {
+		myhtml_tree_destroy(tree);
+		uv_mutex_unlock(&myhtml_mutex);
+		Utils::ThrowError("myhtml_parse failed: %d (%s)", status, Utils::GetModestError(status));
+		return nullptr;
+	}
+	
+	if (!options->async)
+		TreeWaitForDone(tree);
+	
+	uv_mutex_unlock(&myhtml_mutex);
+	
+	return tree;
+}
+
+void Parser::TreeWaitForDone(myhtml_tree_t *tree) {
+	#ifndef MyCORE_BUILD_WITHOUT_THREADS
+		myhtml_t *myhtml = myhtml_tree_get_myhtml(tree);
+		if (myhtml->thread_stream) {
+			mythread_queue_list_t* queue_list = (mythread_queue_list_t *) myhtml->thread_stream->context;
+			if (queue_list)
+				mythread_queue_list_wait_for_done(myhtml->thread_stream, queue_list);
+		}
+	#endif
+}
+
+bool Parser::TreeIsDone(myhtml_tree_t *tree) {
+	#ifndef MyCORE_BUILD_WITHOUT_THREADS
+		myhtml_t *myhtml = myhtml_tree_get_myhtml(tree);
+		if (myhtml->thread_stream) {
+			mythread_queue_list_t* queue_list = (mythread_queue_list_t *) myhtml->thread_stream->context;
+			return mythread_queue_list_see_for_done(myhtml->thread_stream, queue_list);
+		}
+	#endif
+	return true;
+}
+
+void Parser::NodeWaitForDone(myhtml_tree_node_t *node, bool recursive) {
+	#ifndef MyCORE_BUILD_WITHOUT_THREADS
+		if (node->token)
+			myhtml_token_node_wait_for_done(node->tree->token, node->token);
+		if (recursive) {
+			myhtml_tree_node_t *child = myhtml_node_child(node);
+			while (child) {
+				NodeWaitForDone(child, recursive);
+				child = myhtml_node_next(child);
+			}
+		}
+	#endif
+}
+
+bool Parser::NodeIsDone(myhtml_tree_node_t *node, bool recursive) {
+	#ifndef MyCORE_BUILD_WITHOUT_THREADS
+		if (node->token) {
+			if ((node->token->type & MyHTML_TOKEN_TYPE_DONE) == 0)
+				return false;
+		}
+		if (recursive) {
+			myhtml_tree_node_t *child = myhtml_node_child(node);
+			while (child) {
+				if (!NodeIsDone(child, recursive))
+					return false;
+				child = myhtml_node_next(child);
+			}
+		}
+	#endif
+	return true;
+}
+			
+std::tuple<myencoding_t, const char *, size_t> Parser::DetectEncoding(const Nan::Utf8String &html, ParserOptions *options) {
+	size_t html_length = html.length();
+	const char *html_str = *html;
+	
+	// Try to determine encoding
+	myencoding_t encoding;
+	if (options->encoding == MyENCODING_AUTO) {
+		encoding = MyENCODING_NOT_DETERMINED;
+		if (html_length) {
+			// Search encoding in meta-tags
+			if (options->encoding_use_meta) {
+				size_t size = (size_t) options->encoding_prescan_limit < html_length ? (size_t) options->encoding_prescan_limit : html_length;
+				encoding = myencoding_prescan_stream_to_determine_encoding(html_str, size);
+			}
+			
+			if (encoding == MyENCODING_NOT_DETERMINED) {
+				// Check BOM
+				if (!options->encoding_use_bom || !myencoding_detect_and_cut_bom(html_str, html_length, &encoding, &html_str, &html_length)) {
+					// Check heuristic
+					if (!myencoding_detect(html_str, html_length, &encoding)) {
+						// Can't determine encoding, use default
+						encoding = options->default_encoding;
+					}
+				}
+			}
+		} else {
+			encoding = options->default_encoding;
+		}
+	} else {
+		encoding = options->encoding;
+	}
+	
+	return std::make_tuple(encoding, html_str, html_length);
 }
 
 /*
@@ -194,7 +360,7 @@ myencoding_t Parser::GetEncodingOption(v8::Local<v8::Object> object, const char 
 			if (enc_id == MyENCODING_AUTO || enc_id == MyENCODING_DEFAULT || enc_id == MyENCODING_NOT_DETERMINED)
 				return enc_id;
 			
-			if (!myencoding_name_by_id(enc_id, NULL))
+			if (!myencoding_name_by_id(enc_id, nullptr))
 				return MyENCODING_NOT_DETERMINED;
 			
 			return enc_id;
@@ -211,7 +377,7 @@ myencoding_t Parser::GetEncodingOption(v8::Local<v8::Object> object, const char 
 					if (enc_id == MyENCODING_AUTO || enc_id == MyENCODING_DEFAULT || enc_id == MyENCODING_NOT_DETERMINED)
 						return enc_id;
 					
-					if (!myencoding_name_by_id(enc_id, NULL))
+					if (!myencoding_name_by_id(enc_id, nullptr))
 						return MyENCODING_NOT_DETERMINED;
 					
 					return enc_id;
